@@ -6,6 +6,7 @@ services:
       context: elasticsearch/
       args:
         ELK_VERSION: $ELK_VERSION
+        ELASTIC_PASSWORD: changeme
     volumes:
       - type: bind
         source: ./elasticsearch/config/elasticsearch.yml
@@ -19,37 +20,13 @@ services:
       - "9300:9300"
     environment:
       ES_JAVA_OPTS: "-Xmx256m -Xms256m"
-      ELASTIC_PASSWORD: changeme
       # Use single node discovery in order to disable production mode and avoid bootstrap checks
       # see https://www.elastic.co/guide/en/elasticsearch/reference/current/bootstrap-checks.html
       discovery.type: single-node
+    labels:
+      co.elastic.logs/enabled: true
     networks:
       - elk
-
-  logstash:
-    build:
-      context: logstash/
-      args:
-        ELK_VERSION: $ELK_VERSION
-    volumes:
-      - type: bind
-        source: ./logstash/config/logstash.yml
-        target: /usr/share/logstash/config/logstash.yml
-        read_only: true
-      - type: bind
-        source: ./logstash/pipeline
-        target: /usr/share/logstash/pipeline
-        read_only: true
-    ports:
-      - "5000:5000/tcp"
-      - "5000:5000/udp"
-      - "9600:9600"
-    environment:
-      LS_JAVA_OPTS: "-Xmx256m -Xms256m"
-    networks:
-      - elk
-    depends_on:
-      - elasticsearch
 
   kibana:
     build:
@@ -63,10 +40,51 @@ services:
         read_only: true
     ports:
       - "5601:5601"
+    labels:
+      co.elastic.logs/enabled: true
     networks:
       - elk
     depends_on:
       - elasticsearch
+
+  filebeat:
+    build:
+      context: filebeat/
+      args:
+        ELK_VERSION: $ELK_VERSION
+    user: root
+    volumes:
+      - type: bind
+        source: ./filebeat/config/filebeat.yml
+        target: /usr/share/filebeat/filebeat.yml
+        read_only: true
+      - type: volume
+        source: filebeat_data
+        target: /usr/share/filebeat/data
+      - type: bind
+        source: /var/run/docker.sock
+        target: /var/run/docker.sock
+        read_only: true
+      - type: bind
+        source: /var/lib/docker
+        target: /var/lib/docker
+        read_only: true
+      - type: bind
+        source: /var/log
+        target: /data/logs
+        read_only: true
+      - type: volume
+        source: dockerpostgres_pgdata
+        target: /data/pgdata
+        read_only: true
+    command: ["--strict.perms=false"]
+    labels:
+      co.elastic.logs/enabled: true
+    networks:
+      - elk
+    depends_on:
+      - elasticsearch
+      - kibana
 
 networks:
   elk:
@@ -74,3 +92,6 @@ networks:
 
 volumes:
   elasticsearch:
+  filebeat_data:
+  dockerpostgres_pgdata:
+    external: true

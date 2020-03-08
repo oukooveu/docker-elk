@@ -1,0 +1,48 @@
+filebeat.inputs:
+- type: log
+  paths:
+    - /data/logs/messages
+    - /data/logs/*.log
+  tags:
+    - 'syslog'
+- type: container
+  paths:
+    - '/var/lib/docker/containers/*/*.log'
+
+filebeat.autodiscover:
+  providers:
+    - type: docker
+      hints.enabled: true
+
+filebeat.modules:
+- module: postgresql
+  log:
+    enabled: true
+    var.paths: ["/data/pgdata/pg_log/*.log*"]
+
+processors:
+- add_docker_metadata:
+    host: "unix:///var/run/docker.sock"
+
+- decode_json_fields:
+    fields: ["message"]
+    target: "json"
+    overwrite_keys: true
+
+output.elasticsearch:
+  hosts:
+    - elasticsearch
+  username: elastic
+  password: changeme
+  indices:
+     - index: "filebeat-elastic-%{[agent.version]}-%{+yyyy.MM.dd}"
+       when:
+         equals:
+             docker.container.labels.org_label-schema_vendor: Elastic
+     - index: "filebeat-apps-%{[agent.version]}-%{+yyyy.MM.dd}"
+
+setup.kibana:
+  host: "kibana:5601"
+
+logging.json: true
+logging.metrics.enabled: false
